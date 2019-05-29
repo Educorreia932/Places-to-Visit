@@ -6,18 +6,29 @@ Created on Sun May 26 21:31:44 2019
 """
 
 import time
+from geopy.geocoders import Nominatim
+import xml.etree.ElementTree as ET
+import xlsxwriter
 
 start = time.time()
 
-from geopy.geocoders import Nominatim
+geolocator = Nominatim(user_agent ="My-Maps-to-Excel")
 
-geolocator = Nominatim(user_agent ="my-application")
+file_name = "places.kml"
 
-import xml.etree.ElementTree as ET
-
-root = ET.parse('places.kml').getroot()
+root = ET.parse(file_name).getroot()
 
 Document = root[0]
+
+categories = {"theme_park": "Parque temático",
+              "cafe": "Café",
+              "restaurant": "Restaurante",
+              "zoo": "Zoo",
+              "attraction": "Atração",
+              "building": "Edifício",
+              "information": "Informação",
+              "mall": "Centro comercial",
+              "bar": "Bar"}
 
 places = []
 
@@ -26,9 +37,11 @@ for label in Document:
         for place in label:    
             if place.tag[32:] == "Placemark":
                 for attribute in place:
+                    #Name of place
                     if attribute.tag[32:] == "name":
                         name = attribute.text
-                        
+                    
+                    #Check if already visited or not
                     elif attribute.tag[32:] == "styleUrl":
                         if attribute.text == "#icon-1899-E65100-nodesc":
                             already_visited = "Não"
@@ -39,25 +52,35 @@ for label in Document:
                         else:
                             already_visited = "N/A"
                         
+                    #Address details
                     elif attribute.tag[32:] == "Point":
                         coordinates = eval(attribute[0].text.strip()[:-2])[::-1]                        
+                        place = geolocator.reverse(coordinates, addressdetails = True, timeout = 15, language = "pt-pt").raw 
                         
-                        place = geolocator.reverse(coordinates, timeout = 15, language = "pt-pt").raw     
-                        country = place["address"]["country"]
+                        country = place["address"]["country"]    
+                                     
                         
-                        if "suburb" in place["address"].keys():
+                        if "suburb" in place["address"]:
                             locality = place["address"]["suburb"]
                             
-                        elif "city_district" in place["address"].keys():
+                        elif "city_district" in place["address"]:
                             locality = place["address"]["city_district"]
+                            
+                        elif "state" in place["address"]:
+                            locality = place["address"]["state"]
                             
                         else:
                             locality = "N/A"
-                    
-                places.append([country, locality, name, None, already_visited, None])
                         
-import xlsxwriter
+                        category = "N/A"
+                            
+                        location = geolocator.geocode(name, timeout = 15, addressdetails = True)
+                        
+                        if location is not None:
+                            category = location.raw["type"]
 
+                places.append([country, locality, name, category, already_visited, None])
+                        
 # Create an new Excel file and add a worksheet.
 workbook = xlsxwriter.Workbook('places.xlsx')
 worksheet = workbook.add_worksheet()
@@ -66,6 +89,7 @@ worksheet = workbook.add_worksheet()
 worksheet.set_column("A:A", 23)
 worksheet.set_column("B:B", 20)
 worksheet.set_column("C:C", 53)
+worksheet.set_column("D:D", 19)
 worksheet.set_column("E:E", 11)
 worksheet.set_column("F:F", 13)
 
@@ -85,6 +109,7 @@ for place in places:
     worksheet.write(counter, 0, place[0])
     worksheet.write(counter, 1, place[1])
     worksheet.write(counter, 2, place[2])
+    worksheet.write(counter, 3, place[3])
     worksheet.write(counter, 4, place[4])
     
     counter += 1
